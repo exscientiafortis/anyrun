@@ -14,5 +14,10 @@ Config(
   prefix: ":sh",
   // Override the shell used to launch the command
   shell: None,
+  // None to disable history (default)
+  // note the double parens
+  history: Some((
+    capacity: 100,
+    )),
 )
 ```
