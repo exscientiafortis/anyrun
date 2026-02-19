@@ -19,7 +19,7 @@ pub struct History {
 impl History {
     pub fn new(history_config: &HistoryConfig) -> History {
         let maybe_history_file =
-            dirs::state_dir().map(|s| s.join("anyrun").join("shell_history.txt"));
+            dirs::state_dir().map(|s| s.join("anyrun").join("shell").join("shell_history.txt"));
 
         let backing_store = if let Some(history_file) = maybe_history_file {
             let file = (|| {
