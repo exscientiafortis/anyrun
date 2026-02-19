@@ -2,8 +2,7 @@ use std::{env, fs, process::Command};
 
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_plugin::*;
-use nucleo_matcher::pattern::{Atom, AtomKind, CaseMatching, Normalization};
-use nucleo_matcher::Matcher;
+use fuzzy_matcher::FuzzyMatcher;
 use serde::Deserialize;
 
 use self::history::History;
@@ -70,29 +69,35 @@ fn info() -> PluginInfo {
 fn get_matches(input: RString, state: &State) -> RVec<Match> {
     let config = &state.config;
     if input.starts_with(&config.prefix) {
-        let (_, command) = input.split_once(&config.prefix).unwrap();
-        let command = command.trim();
-        if !command.is_empty() {
-            let matches = if let Some(history) = &state.history {
-                let mut matcher = Matcher::new(nucleo_matcher::Config::DEFAULT);
-                let matches = Atom::new(
-                    command,
-                    CaseMatching::Ignore,
-                    Normalization::Smart,
-                    AtomKind::Fuzzy,
-                    false,
-                )
-                .match_list(&history.elements, &mut matcher)
-                .into_iter()
-                .map(|(s, _)| s.as_str())
-                .collect();
-                matches
-            } else {
-                vec![command]
-            };
+        let (_, input) = input.split_once(&config.prefix).unwrap();
+        let input = input.trim();
+        if !input.is_empty() {
+            let history_matches = state
+                .history
+                .as_ref()
+                .map(|history| {
+                    let matcher = fuzzy_matcher::skim::SkimMatcherV2::default().ignore_case();
+                    let mut matches = history
+                        .elements
+                        .iter()
+                        .filter_map(|s| {
+                            matcher
+                                .fuzzy_match(&s.command, input)
+                                .map(|score| (s, score))
+                        })
+                        .collect::<Vec<_>>();
 
-            std::iter::once(command)
-                .chain(matches.into_iter())
+                    matches.sort_by(|(_, score_a), (_, score_b)| score_b.cmp(score_a));
+
+                    matches
+                        .iter()
+                        .map(|(hist_item, _)| hist_item.command.as_str())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+
+            std::iter::once(input)
+                .chain(history_matches.into_iter())
                 .map(|cmd| Match {
                     title: cmd.into(),
                     description: ROption::RSome(

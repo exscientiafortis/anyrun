@@ -1,13 +1,25 @@
 use std::fs::File;
-use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
+use std::io::{BufReader, BufWriter, Seek, SeekFrom, Write};
 
 use indexmap::IndexSet;
+use serde::{Deserialize, Serialize};
 
 use crate::HistoryConfig;
 
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct HistoryItem {
+    pub command: String,
+}
+
+impl HistoryItem {
+    pub fn new(command: String) -> Self {
+        Self { command }
+    }
+}
+
 pub struct History {
     pub store: File,
-    pub elements: IndexSet<String>,
+    pub elements: IndexSet<HistoryItem>,
     pub cap: usize,
 }
 
@@ -28,7 +40,18 @@ impl History {
                 .truncate(false)
                 .open(&history_path)?;
 
-            History::from_file(history_config.capacity, file)
+            let reader = BufReader::new(&file);
+            let elements: Option<IndexSet<HistoryItem>> = match serde_json::from_reader(reader) {
+                Ok(val) => val,
+                Err(e) if e.is_eof() => None,
+                Err(e) => return Err(e.into()),
+            };
+
+            Ok(History {
+                store: file,
+                elements: elements.unwrap_or_default(),
+                cap: history_config.capacity,
+            })
         } else {
             Err(std::io::Error::new(
                 std::io::ErrorKind::Unsupported,
@@ -39,32 +62,21 @@ impl History {
 
     pub fn push(&mut self, value: String) -> Result<(), std::io::Error> {
         // insert_before ensures new usages of existing commands bubble up to the top of the history, simple `insert` does not
-        self.elements.insert_before(self.elements.len(), value);
+        self.elements
+            .insert_before(self.elements.len(), HistoryItem::new(value));
 
         if self.elements.len() > self.cap {
             let remove_count = self.elements.len().saturating_sub(self.cap);
             self.elements.drain(0..remove_count);
         }
 
-        self.store.seek(SeekFrom::Start(0))?;
         self.store.set_len(0)?;
-        for line in &self.elements {
-            writeln!(self.store, "{}", line)?;
-        }
-        self.store.flush()?;
+        self.store.seek(SeekFrom::Start(0))?;
+
+        let mut writer = BufWriter::new(&self.store);
+        serde_json::to_writer(&mut writer, &self.elements)?;
+        writer.flush()?;
 
         Ok(())
-    }
-
-    fn from_file(cap: usize, file: File) -> Result<History, std::io::Error> {
-        let elements: IndexSet<String> = BufReader::new(&file)
-            .lines()
-            .collect::<std::io::Result<_>>()?;
-
-        Ok(History {
-            store: file,
-            elements,
-            cap,
-        })
     }
 }
