@@ -44,7 +44,13 @@ fn init(config_dir: RString) -> State {
         Ok(content) => {
             let config: Config = ron::from_str(&content).unwrap_or_default();
 
-            let history = config.history.as_ref().map(History::new);
+            let history = config.history.as_ref().and_then(|h| match History::new(h) {
+                Ok(history) => Some(history),
+                Err(err) => {
+                    eprintln!("[shell] Failed to initialize history: {}", err);
+                    None
+                }
+            });
 
             State { config, history }
         }

@@ -5,54 +5,35 @@ use indexmap::IndexSet;
 
 use crate::HistoryConfig;
 
-pub enum HistoryBackingStore {
-    File(File),
-    Memory,
-}
-
 pub struct History {
-    pub backing_store: HistoryBackingStore,
+    pub store: File,
     pub elements: IndexSet<String>,
     pub cap: usize,
 }
 
 impl History {
-    pub fn new(history_config: &HistoryConfig) -> History {
-        let maybe_history_file =
+    pub fn new(history_config: &HistoryConfig) -> Result<History, std::io::Error> {
+        let maybe_history_path =
             dirs::state_dir().map(|s| s.join("anyrun").join("shell").join("shell_history.txt"));
 
-        let backing_store = if let Some(history_file) = maybe_history_file {
-            let file = (|| {
-                if let Some(dir) = history_file.parent() {
-                    std::fs::create_dir_all(dir)?;
-                }
-
-                File::options()
-                    .read(true)
-                    .write(true)
-                    .create(true)
-                    .truncate(false)
-                    .open(&history_file)
-            })();
-
-            match file {
-                Ok(f) => HistoryBackingStore::File(f),
-                Err(ref err) => {
-                    eprintln!("[shell] Failed to create file {} to persist shell plugin history, falling back to in-memory: {}", &history_file.to_string_lossy(), err.kind());
-                    HistoryBackingStore::Memory
-                }
+        if let Some(history_path) = maybe_history_path {
+            if let Some(dir) = history_path.parent() {
+                std::fs::create_dir_all(dir)?;
             }
-        } else {
-            HistoryBackingStore::Memory
-        };
 
-        match backing_store {
-            HistoryBackingStore::File(file) => History::from_file(history_config.capacity, file)
-                .unwrap_or_else(|err| {
-                    eprintln!("[shell] Failed to initialize history from file: {:?}", err);
-                    History::from_mem(history_config.capacity)
-                }),
-            HistoryBackingStore::Memory => History::from_mem(history_config.capacity),
+            let file = File::options()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(&history_path)?;
+
+            History::from_file(history_config.capacity, file)
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "failed to get the user state directory",
+            ))
         }
     }
 
@@ -65,24 +46,14 @@ impl History {
             self.elements.drain(0..remove_count);
         }
 
-        if let HistoryBackingStore::File(file) = &mut self.backing_store {
-            file.seek(SeekFrom::Start(0))?;
-            file.set_len(0)?;
-            for line in &self.elements {
-                writeln!(file, "{}", line)?;
-            }
-            file.flush()?;
+        self.store.seek(SeekFrom::Start(0))?;
+        self.store.set_len(0)?;
+        for line in &self.elements {
+            writeln!(self.store, "{}", line)?;
         }
+        self.store.flush()?;
 
         Ok(())
-    }
-
-    fn from_mem(cap: usize) -> History {
-        History {
-            backing_store: HistoryBackingStore::Memory,
-            elements: IndexSet::new(),
-            cap,
-        }
     }
 
     fn from_file(cap: usize, file: File) -> Result<History, std::io::Error> {
@@ -91,7 +62,7 @@ impl History {
             .collect::<std::io::Result<_>>()?;
 
         Ok(History {
-            backing_store: HistoryBackingStore::File(file),
+            store: file,
             elements,
             cap,
         })
