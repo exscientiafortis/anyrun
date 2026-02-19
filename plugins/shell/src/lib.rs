@@ -18,7 +18,13 @@ struct HistoryConfig {
 struct Config {
     prefix: String,
     shell: Option<String>,
+    #[serde(default = "default_max_entries")]
+    max_entries: usize,
     history: Option<HistoryConfig>,
+}
+
+fn default_max_entries() -> usize {
+    10
 }
 
 impl Default for Config {
@@ -26,6 +32,7 @@ impl Default for Config {
         Config {
             prefix: ":sh".to_string(),
             shell: None,
+            max_entries: default_max_entries(),
             history: None,
         }
     }
@@ -98,6 +105,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
 
             std::iter::once(input)
                 .chain(history_matches.into_iter())
+                .take(config.max_entries)
                 .map(|cmd| Match {
                     title: cmd.into(),
                     description: ROption::RSome(
