@@ -85,8 +85,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
                 .map(|history| {
                     let matcher = fuzzy_matcher::skim::SkimMatcherV2::default().ignore_case();
                     let mut matches = history
-                        .elements
-                        .iter()
+                        .elements()
                         .filter_map(|s| {
                             matcher
                                 .fuzzy_match(&s.command, input)

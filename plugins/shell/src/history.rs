@@ -6,27 +6,34 @@ use serde::{Deserialize, Serialize};
 
 use crate::HistoryConfig;
 
+#[derive(Serialize, Deserialize, Default)]
+struct PersistedHistory<T> {
+    elements: T,
+}
+type PersistedHistoryOwned = PersistedHistory<IndexSet<HistoryItem>>;
+type PersistedHistoryBorrowed<'a> = PersistedHistory<&'a IndexSet<HistoryItem>>;
+
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct HistoryItem {
     pub command: String,
 }
 
 impl HistoryItem {
-    pub fn new(command: String) -> Self {
+    fn new(command: String) -> Self {
         Self { command }
     }
 }
 
 pub struct History {
-    pub store: File,
-    pub elements: IndexSet<HistoryItem>,
+    store: File,
+    elements: IndexSet<HistoryItem>,
     pub cap: usize,
 }
 
 impl History {
     pub fn new(history_config: &HistoryConfig) -> Result<History, std::io::Error> {
         let maybe_history_path =
-            dirs::state_dir().map(|s| s.join("anyrun").join("shell").join("shell_history.txt"));
+            dirs::state_dir().map(|s| s.join("anyrun").join("shell").join("history.json"));
 
         if let Some(history_path) = maybe_history_path {
             if let Some(dir) = history_path.parent() {
@@ -41,15 +48,15 @@ impl History {
                 .open(&history_path)?;
 
             let reader = BufReader::new(&file);
-            let elements: Option<IndexSet<HistoryItem>> = match serde_json::from_reader(reader) {
+            let persisted_history: PersistedHistoryOwned = match serde_json::from_reader(reader) {
                 Ok(val) => val,
-                Err(e) if e.is_eof() => None,
+                Err(e) if e.is_eof() => PersistedHistory::default(),
                 Err(e) => return Err(e.into()),
             };
 
             Ok(History {
                 store: file,
-                elements: elements.unwrap_or_default(),
+                elements: persisted_history.elements,
                 cap: history_config.capacity,
             })
         } else {
@@ -74,9 +81,18 @@ impl History {
         self.store.seek(SeekFrom::Start(0))?;
 
         let mut writer = BufWriter::new(&self.store);
-        serde_json::to_writer(&mut writer, &self.elements)?;
+        serde_json::to_writer(
+            &mut writer,
+            &PersistedHistoryBorrowed {
+                elements: &self.elements,
+            },
+        )?;
         writer.flush()?;
 
         Ok(())
+    }
+
+    pub fn elements(&self) -> impl Iterator<Item = &HistoryItem> {
+        self.elements.iter()
     }
 }
