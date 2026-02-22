@@ -18,13 +18,15 @@ struct HistoryConfig {
 struct Config {
     prefix: String,
     shell: Option<String>,
-    #[serde(default = "default_max_entries")]
+    #[serde(default = "Config::default_max_entries")]
     max_entries: usize,
     history: Option<HistoryConfig>,
 }
 
-fn default_max_entries() -> usize {
-    10
+impl Config {
+    fn default_max_entries() -> usize {
+        10
+    }
 }
 
 impl Default for Config {
@@ -32,7 +34,7 @@ impl Default for Config {
         Config {
             prefix: ":sh".to_string(),
             shell: None,
-            max_entries: default_max_entries(),
+            max_entries: Config::default_max_entries(),
             history: None,
         }
     }
