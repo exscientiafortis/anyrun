@@ -13,7 +13,7 @@ struct PersistedHistory<T> {
 type PersistedHistoryOwned = PersistedHistory<IndexSet<HistoryItem>>;
 type PersistedHistoryBorrowed<'a> = PersistedHistory<&'a IndexSet<HistoryItem>>;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Debug)]
 pub struct HistoryItem {
     pub command: String,
 }
@@ -24,6 +24,7 @@ impl HistoryItem {
     }
 }
 
+#[derive(Debug)]
 pub struct History {
     store: File,
     elements: IndexSet<HistoryItem>,

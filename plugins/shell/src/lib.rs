@@ -9,12 +9,12 @@ use self::history::History;
 
 mod history;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct HistoryConfig {
     capacity: usize,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct Config {
     prefix: String,
     shell: Option<String>,
@@ -40,7 +40,7 @@ impl Default for Config {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct State {
     config: Config,
     history: Option<History>,
@@ -48,9 +48,15 @@ struct State {
 
 #[init]
 fn init(config_dir: RString) -> State {
-    match fs::read_to_string(format!("{}/shell.ron", config_dir)) {
+    let config_dir = format!("{}/shell.ron", config_dir);
+    match fs::read_to_string(&config_dir) {
         Ok(content) => {
-            let config: Config = ron::from_str(&content).unwrap_or_default();
+            let config: Config = ron::from_str(&content).unwrap_or_else(|err| {
+                let def = Config::default();
+                eprintln!("[shell] Failed to parse configuration: {:?}", err);
+                eprintln!("[shell] Proceeding with fallback configuration: {:?}", def);
+                def
+            });
 
             let history = config.history.as_ref().and_then(|h| match History::new(h) {
                 Ok(history) => Some(history),
@@ -62,7 +68,15 @@ fn init(config_dir: RString) -> State {
 
             State { config, history }
         }
-        Err(_) => State::default(),
+        Err(err) => {
+            let def = State::default();
+            eprintln!(
+                "[shell] Failed to read configuration from '{}': {}",
+                &config_dir, err
+            );
+            eprintln!("[shell] Proceeding with fallback configuration: {:?})", def);
+            def
+        }
     }
 }
 
