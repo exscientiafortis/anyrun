@@ -234,6 +234,10 @@ in
                   type = bool;
                   default = false;
                 };
+                shift = mkOption {
+                  type = bool;
+                  default = false;
+                };
                 key = mkOption {
                   type = str;
                   description = ''
@@ -346,6 +350,7 @@ in
                   Keybind(
                     ${optionalString x.ctrl "ctrl: true,"}
                     ${optionalString x.alt "alt: true,"}
+                    ${optionalString x.shift "shift: true,"}
                     key: "${x.key}",
                     action: ${capitalize x.action},
                   ),
